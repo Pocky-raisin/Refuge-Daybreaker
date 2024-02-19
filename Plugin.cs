@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using BepInEx;
 using UnityEngine;
 using SlugBase.Features;
@@ -17,6 +17,7 @@ namespace SlugTemplate
         public static readonly SlugcatStats.Name ChandlerName = new SlugcatStats.Name("DB.Candle", false);
         public SlugBaseSaveData chandlerSaveData = SlugBase.SaveData.SaveDataExtension.GetSlugBaseData(new DeathPersistentSaveData(ChandlerName));
         public SlugBaseSaveData imperishableSaveData = SlugBase.SaveData.SaveDataExtension.GetSlugBaseData(new DeathPersistentSaveData(ImperishableName));
+        private int spearCraftCountUp = 0;
 
         // Add hooks
         public void OnEnable()
@@ -37,6 +38,8 @@ namespace SlugTemplate
             On.SlugcatStats.SpearSpawnExplosiveRandomChance += makeSpearsBoom;
             On.SlugcatStats.SpearSpawnModifier += dBreakerExtraSpears;
             On.Spear.HitSomething += spearResist;
+            On.Player.SpearStick += noStickSpears;
+            On.Player.GrabUpdate += makeFireSpears;
             Debug.Log("Hooks Set");
         }
         
@@ -57,31 +60,44 @@ namespace SlugTemplate
 
         public void deflectSpears(On.Creature.orig_Violence orig, Creature self, BodyChunk source, Vector2? directionAndMomentum, BodyChunk hitChunk, PhysicalObject.Appendage.Pos hitAppendage, Creature.DamageType type, float damage, float stunBonus)
         {
-            if(self is Player)
+            if(self is Player player)
             {
                 imperishableSaveData.TryGet<int>("minKarma", out int check);
-                if (((self as Player).slugcatStats.name == ChandlerName && (self as Player).KarmaCap >= 8) || ((self as Player).slugcatStats.name == ImperishableName && check >= 8))
+                if ((player.slugcatStats.name == ChandlerName && player.KarmaCap >= 8) || (player.slugcatStats.name == ImperishableName && check >= 8))
                 {
-                    if(type == Creature.DamageType.Stab)
+                    if(type == Creature.DamageType.Stab || type == Creature.DamageType.Bite)
                     {
-                        if(self.graphicsModule != null && source != null)
+                        if(self.graphicsModule != null && source != null && self.room != null)
                         {
+                            self.room.PlaySound(SoundID.Lizard_Head_Shield_Deflect, self.mainBodyChunk);
                             self.room.AddObject(new StationaryEffect(source.pos, new Color(1f, 1f, 1f), self.graphicsModule as LizardGraphics, StationaryEffect.EffectType.FlashingOrb));
+
                         }
                         return;
                     }
-                    orig(self, source, directionAndMomentum, hitChunk, hitAppendage, type, damage, stunBonus);
+                    
                 }
             }
-            
+            orig(self, source, directionAndMomentum, hitChunk, hitAppendage, type, damage, stunBonus);
+        }
+
+        public bool noStickSpears(On.Player.orig_SpearStick orig, Player self, Weapon source, float dmg, BodyChunk chunk, PhysicalObject.Appendage.Pos hitAppendage, Vector2 direction)
+        {
+            imperishableSaveData.TryGet<int>("minKarma", out int check);
+            if ((self.slugcatStats.name == ChandlerName && self.KarmaCap >= 8) || (self.slugcatStats.name == ImperishableName && check >= 8))
+            {
+                return false;
+            }
+            else
+            {
+                return orig(self, source, dmg, chunk, hitAppendage, direction);
+            }
         }
 
         public void dBreakerDoInitialSaveStuff(On.DeathPersistentSaveData.orig_ctor orig, DeathPersistentSaveData self, SlugcatStats.Name slugcatName)
         {
-            Debug.Log("Save Stuff Happening");
             imperishableSaveData.TryGet<bool>("alreadyDidSaveSetup", out bool val1);
             chandlerSaveData.TryGet<bool>("alreadyDidSaveSetup", out bool val2);
-            Debug.Log("AAA");
             if (!val1)
             {
                 imperishableSaveData.Set<int>("minKarma", 9);
@@ -107,7 +123,6 @@ namespace SlugTemplate
                 chandlerSaveData.Set<bool>("didK9Miracle", false);
                 chandlerSaveData.Set<bool>("alreadyDidSaveSetup", true);
             }
-            Debug.Log("A_A");
             orig(self, slugcatName);
         }
 
@@ -128,10 +143,19 @@ namespace SlugTemplate
                     maxKarma = 9;
                 }
                 imperishableSaveData.Set<int>("maxKarma", maxKarma);
+                if (self.KarmaCap > maxKarma)
+                {
+                    (self.room.game.session as StoryGameSession).saveState.deathPersistentSaveData.karmaCap = maxKarma;
+                }
+                if(self.Karma > self.KarmaCap)
+                {
+                    (self.room.game.session as StoryGameSession).saveState.deathPersistentSaveData.karmaCap = self.KarmaCap;
+                }
                 if (self.Karma < minKarma)
                 {
                     (self.room.game.session as StoryGameSession).saveState.deathPersistentSaveData.karma = minKarma;
                 }
+                
             }
         }
 
@@ -204,7 +228,7 @@ namespace SlugTemplate
         {
             orig(self);
             imperishableSaveData.TryGet<int>("minKarma", out int check);
-            if ((self.player.slugcatStats.name == ImperishableName && check >= 1) || (self.player.slugcatStats.name == ChandlerName && self.player.KarmaCap >= 3))
+            if (self.player.slugcatStats.name == ChandlerName && self.player.KarmaCap >= 3)
             {
                 if(self.lightSource != null)
                 {
@@ -214,6 +238,22 @@ namespace SlugTemplate
                 if (self.lightSource == null)
                 {
                     self.lightSource = new LightSource(self.player.mainBodyChunk.pos, false, new Color(1f, 0.56078431372f, 0.2431372549f), self.player);
+                    self.lightSource.requireUpKeep = true;
+                    self.lightSource.setRad = new float?(300f);
+                    self.lightSource.setAlpha = new float?(1f);
+                    self.player.room.AddObject(self.lightSource);
+                }
+            }
+            else if(self.player.slugcatStats.name == ImperishableName && check >= 2)
+            {
+                if (self.lightSource != null)
+                {
+                    self.lightSource.stayAlive = true;
+                    self.lightSource.setPos = new Vector2?(self.player.mainBodyChunk.pos);
+                }
+                if (self.lightSource == null)
+                {
+                    self.lightSource = new LightSource(self.player.mainBodyChunk.pos, false, new Color(1f, 0.76078431372f, 0.4431372549f), self.player);
                     self.lightSource.requireUpKeep = true;
                     self.lightSource.setRad = new float?(300f);
                     self.lightSource.setAlpha = new float?(1f);
@@ -297,7 +337,7 @@ namespace SlugTemplate
         {
             if(self.slugcatStats.name == ChandlerName && self.KarmaCap >= 5)
             {
-                return !(crit is IPlayerEdible) && crit.dead;
+                return (crit is IPlayerEdible) && crit.dead;
             }
             else
             {
@@ -305,7 +345,79 @@ namespace SlugTemplate
             }
         }
 
+        void makeFireSpears(On.Player.orig_GrabUpdate orig, Player self, bool eu)
+        {
+            Debug.Log("AAA");
+            orig(self, eu);
+            Debug.Log("BBB");
 
+            for (int i = 0; i < 2; i++)
+            {
+                Debug.Log("LLL");
+                if (self.grasps[i] != null)
+                {
+                    Debug.Log("NNN");
+                    if (self.grasps[i].grabbed is Spear spear)
+                    {
+                        Debug.Log("MMM");
+                        if (!spear.bugSpear && !spear.abstractSpear.electric && !spear.abstractSpear.explosive)
+                        {
+                            Debug.Log("CCC");
+                            if (spearCraftCountUp <= 200)
+                            {
+                                Debug.Log("DDD");
+                                imperishableSaveData.TryGet<int>("minKarma", out int check);
+                                if (self.slugcatStats.name == ChandlerName && self.KarmaCap >= 6)
+                                {
+                                    Debug.Log("EEE");
+                                    spearCraftCountUp++;
+                                }
+                                else if (self.slugcatStats.name == ImperishableName && check >= 6)
+                                {
+                                    Debug.Log("FFF");
+                                    spearCraftCountUp += 200;
+                                }
+                            }
+                            else
+                            {
+                                Debug.Log("GGG");
+                                spearCraftCountUp = 0;
+                                self.ReleaseGrasp(i);
+                                spear.abstractPhysicalObject.realizedObject.RemoveFromRoom();
+                                AbstractSpear spear1 = new AbstractSpear(self.room.world, null, self.abstractCreature.pos, self.room.game.GetNewID(), false, 0.5f);
+                                self.room.abstractRoom.AddEntity(spear1);
+                                spear1.RealizeInRoom();
+                                if (self.FreeHand() != -1)
+                                {
+                                    Debug.Log("HHH");
+                                    self.SlugcatGrab(spear1.realizedObject, self.FreeHand());
+                                    self.room.PlaySound(MoreSlugcatsEnums.MSCSoundID.Throw_FireSpear, self.firstChunk.pos, 1f, UnityEngine.Random.Range(0.8f, 1.2f));
+                                }
+                            }
+                            Debug.Log("III");
+                        }
+                    }
+               
+                }
+                Debug.Log("JJJ");
+            }
+            Debug.Log("ForLoopEnded");
+        }
+
+        void causeFear()
+        {
+
+        }
+
+        void doubleJump()
+        {
+
+        }
+
+        void damageGrabber()
+        {
+
+        }
 
     }
 }
