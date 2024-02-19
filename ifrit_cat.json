@@ -1,0 +1,22 @@
+{
+	"id": "DB.Candle",
+	"name": "The Chandler",
+	"description": "TBA.",
+	"features": {
+		"color": "542e15",
+		"select_menu_scene": "Slugcat_DB.Candle",
+		"select_menu_scene_ascended": "Ghost_DB.Candle",
+		"karma": 0,
+		"karma_cap": 2,
+		"world_state": [ "DB.Candle", "Saint" ],
+		"weight": 1.1,
+		"throw_skill": [ 1, 0 ],
+		"lung_capacity": 0.9,
+		"diet": {
+			"base": "White"
+		},
+		"food_min": 4,
+		"food_max": 6,
+		"start_room":  "DS_RIVSTART"
+	}
+}
