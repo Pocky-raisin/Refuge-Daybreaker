@@ -3,7 +3,7 @@
 	"name": "The Chandler",
 	"description": "TBA.",
 	"features": {
-		"color": "542e15",
+		"color": "FFA327",
 		"select_menu_scene": "Slugcat_DB.Candle",
 		"select_menu_scene_ascended": "Ghost_DB.Candle",
 		"karma": 0,
@@ -17,6 +17,6 @@
 		},
 		"food_min": 4,
 		"food_max": 6,
-		"start_room":  "DS_RIVSTART"
+		"start_room": "UG_RIVSTART"
 	}
 }
